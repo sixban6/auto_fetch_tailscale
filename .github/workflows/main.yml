@@ -1,49 +1,53 @@
-name: Fetch Tailscale All Platforms
+name: Daily Fetch Tailscale to Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: '指定版本号 (留空则自动抓取最新版，例如 1.78.1)'
-        required: false
-        default: ''
+  schedule:
+    # 每天 UTC 时间凌晨 2 点 (北京时间上午 10 点) 自动运行
+    - cron: '0 2 * * *'
+  workflow_dispatch: # 依然保留手动运行按钮，方便你随时测试
 
 jobs:
-  download-and-upload:
+  fetch-and-release:
     runs-on: ubuntu-latest
-    steps:
-      - name: 获取最新版本号并批量下载
-        run: |
-          # 1. 自动获取最新版本号 (如果手动输入了则优先用手动输入的)
-          VERSION="${{ github.event.inputs.version }}"
-          if [ -z "$VERSION" ]; then
-            # 从官方 GitHub 仓库抓取最新的 tag
-            VERSION=$(curl -s https://api.github.com/repos/tailscale/tailscale/releases/latest | grep -Po '"tag_name": "v\K[^"]*')
-          fi
-          echo "准备下载的 Tailscale 版本: $VERSION"
-          
-          # 2. 下载 Windows 和 Android (官方有固定的 latest 链接)
-          wget -O tailscale-setup-latest.exe https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe
-          wget -O tailscale-latest.apk https://pkgs.tailscale.com/stable/tailscale-latest.apk
-          
-          # 3. 下载 Linux / OpenWrt 通用静态包 (.tgz)
-          # amd64: 适用于绝大多数 x86_64 软路由 (如 J4125, N100) 和常规云服务器
-          # arm64: 适用于 ARM 架构的设备 (如树莓派 4/5, N1 盒子, 各种 ARM 软路由)
-          wget -O tailscale_${VERSION}_amd64.tgz https://pkgs.tailscale.com/stable/tailscale_${VERSION}_amd64.tgz
-          wget -O tailscale_${VERSION}_arm64.tgz https://pkgs.tailscale.com/stable/tailscale_${VERSION}_arm64.tgz
-          
-          # 4. 针对 Debian/Ubuntu 的离线包 (.deb) (以主流的 amd64 架构为例)
-          # 如果你在常规 Linux 上不想手动配置服务，可以用 deb 包一键安装
-          wget -O tailscale_${VERSION}_amd64_ubuntu.deb https://pkgs.tailscale.com/stable/ubuntu/jammy/tailscale_${VERSION}_amd64.deb
-          wget -O tailscale_${VERSION}_amd64_debian.deb https://pkgs.tailscale.com/stable/debian/bookworm/tailscale_${VERSION}_amd64.deb
+    permissions:
+      contents: write # 赋予脚本读写 Releases 的权限
 
-      - name: 零压缩打包并上传 (Artifacts)
-        uses: actions/upload-artifact@v4
+    steps:
+      - name: 获取最新版本号并下载文件
+        run: |
+          # 1. 抓取 Tailscale 官方最新版本号
+          VERSION=$(curl -s https://api.github.com/repos/tailscale/tailscale/releases/latest | grep -Po '"tag_name": "v\K[^"]*')
+          echo "TAILSCALE_VERSION=$VERSION" >> $GITHUB_ENV
+          echo "正在抓取版本: $VERSION"
+          
+          # 2. 批量下载所有平台的安装包 (加了 -q 参数减少日志刷屏)
+          wget -q -O tailscale-setup-latest.exe https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe
+          wget -q -O tailscale-latest.apk https://pkgs.tailscale.com/stable/tailscale-latest.apk
+          wget -q -O tailscale_${VERSION}_amd64.tgz https://pkgs.tailscale.com/stable/tailscale_${VERSION}_amd64.tgz
+          wget -q -O tailscale_${VERSION}_arm64.tgz https://pkgs.tailscale.com/stable/tailscale_${VERSION}_arm64.tgz
+          wget -q -O tailscale_${VERSION}_amd64_ubuntu.deb https://pkgs.tailscale.com/stable/ubuntu/jammy/tailscale_${VERSION}_amd64.deb
+          wget -q -O tailscale_${VERSION}_amd64_debian.deb https://pkgs.tailscale.com/stable/debian/bookworm/tailscale_${VERSION}_amd64.deb
+
+      - name: 删除旧的 Latest Release (保持仓库整洁)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 删除名为 latest 的发布和标签，如果不存在则跳过报错
+          gh release delete latest --cleanup-tag -y || true
+
+      - name: 发布全新 Release 并上传文件
+        uses: softprops/action-gh-release@v2
         with:
-          name: Tailscale-All-Platforms
-          path: |
+          tag_name: latest
+          name: "Tailscale 最新全平台离线包"
+          body: |
+            ### 🤖 自动同步完成
+            - **官方版本号**: `v${{ env.TAILSCALE_VERSION }}`
+            - **更新时间**: 自动每天同步覆盖，保持最新状态。
+            
+            你可以使用 `ghproxy` 等镜像服务加速下载以下文件。
+          files: |
             *.exe
             *.apk
             *.tgz
             *.deb
-          compression-level: 0 # 保持0压缩率，大大节省 Action 运行时间
