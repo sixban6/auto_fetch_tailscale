@@ -2,37 +2,40 @@ name: Daily Fetch Tailscale to Release
 
 on:
   schedule:
-    # 每天 UTC 时间凌晨 2 点 (北京时间上午 10 点) 自动运行
+    # 每天 UTC 凌晨 2 点自动运行
     - cron: '0 2 * * *'
-  workflow_dispatch: # 依然保留手动运行按钮，方便你随时测试
+  workflow_dispatch:
 
 jobs:
   fetch-and-release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # 赋予脚本读写 Releases 的权限
+      contents: write # 必须保留，用于发布 Release
 
     steps:
       - name: 获取最新版本号并下载文件
         run: |
-          # 1. 抓取 Tailscale 官方最新版本号
+          # 1. 抓取官方最新版本号
           VERSION=$(curl -s https://api.github.com/repos/tailscale/tailscale/releases/latest | grep -Po '"tag_name": "v\K[^"]*')
           echo "TAILSCALE_VERSION=$VERSION" >> $GITHUB_ENV
           echo "正在抓取版本: $VERSION"
           
-          # 2. 批量下载所有平台的安装包 (加了 -q 参数减少日志刷屏)
-          wget -q -O tailscale-setup-latest.exe https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe
-          wget -q -O tailscale-latest.apk https://pkgs.tailscale.com/stable/tailscale-latest.apk
-          wget -q -O tailscale_${VERSION}_amd64.tgz https://pkgs.tailscale.com/stable/tailscale_${VERSION}_amd64.tgz
-          wget -q -O tailscale_${VERSION}_arm64.tgz https://pkgs.tailscale.com/stable/tailscale_${VERSION}_arm64.tgz
-          wget -q -O tailscale_${VERSION}_amd64_ubuntu.deb https://pkgs.tailscale.com/stable/ubuntu/jammy/tailscale_${VERSION}_amd64.deb
-          wget -q -O tailscale_${VERSION}_amd64_debian.deb https://pkgs.tailscale.com/stable/debian/bookworm/tailscale_${VERSION}_amd64.deb
+          # 2. Windows 和 Android
+          wget -nv -O tailscale-setup-latest.exe https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe
+          wget -nv -O tailscale-latest.apk https://pkgs.tailscale.com/stable/tailscale-latest.apk
+          
+          # 3. Linux / OpenWrt 必备通用静态包 (tgz)
+          wget -nv -O tailscale_${VERSION}_amd64.tgz https://pkgs.tailscale.com/stable/tailscale_${VERSION}_amd64.tgz
+          wget -nv -O tailscale_${VERSION}_arm64.tgz https://pkgs.tailscale.com/stable/tailscale_${VERSION}_arm64.tgz
+          
+          # 4. Debian / Ubuntu 离线包 (已修正为官方的 pool 隐藏路径)
+          wget -nv -O tailscale_${VERSION}_amd64_ubuntu.deb https://pkgs.tailscale.com/stable/ubuntu/pool/tailscale_${VERSION}_amd64.deb
+          wget -nv -O tailscale_${VERSION}_amd64_debian.deb https://pkgs.tailscale.com/stable/debian/pool/tailscale_${VERSION}_amd64.deb
 
-      - name: 删除旧的 Latest Release (保持仓库整洁)
+      - name: 删除旧的 Latest Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 删除名为 latest 的发布和标签，如果不存在则跳过报错
           gh release delete latest --cleanup-tag -y || true
 
       - name: 发布全新 Release 并上传文件
@@ -43,9 +46,9 @@ jobs:
           body: |
             ### 🤖 自动同步完成
             - **官方版本号**: `v${{ env.TAILSCALE_VERSION }}`
-            - **更新时间**: 自动每天同步覆盖，保持最新状态。
             
-            你可以使用 `ghproxy` 等镜像服务加速下载以下文件。
+            你可以使用 `ghproxy` 等镜像服务加速下载。
+            **⚠️ 提示：OpenWrt 用户请直接下载 `.tgz` 包，解压提取二进制文件使用。**
           files: |
             *.exe
             *.apk
