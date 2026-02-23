@@ -32,10 +32,6 @@ jobs:
           echo "TAILSCALE_VERSION=$VERSION" >> $GITHUB_ENV
           echo "🎯 成功获取官方最新版本: $VERSION"
           
-          # Windows 和 Android
-          wget -nv -O tailscale-setup-latest.exe https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe
-          wget -nv -O tailscale-latest.apk https://pkgs.tailscale.com/stable/tailscale-latest.apk
-          
           # Linux / OpenWrt 必备通用静态包 (tgz)
           wget -nv -O tailscale_${VERSION}_amd64.tgz https://pkgs.tailscale.com/stable/tailscale_${VERSION}_amd64.tgz
           wget -nv -O tailscale_${VERSION}_arm64.tgz https://pkgs.tailscale.com/stable/tailscale_${VERSION}_arm64.tgz
@@ -62,7 +58,5 @@ jobs:
             你可以使用 `ghproxy` 等镜像服务加速下载。
             **⚠️ 提示：OpenWrt 用户请直接下载 `.tgz` 包，解压提取二进制文件使用。**
           files: |
-            *.exe
-            *.apk
             *.tgz
             *.deb
