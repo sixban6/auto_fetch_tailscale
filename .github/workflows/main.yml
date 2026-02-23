@@ -1,0 +1,49 @@
+name: Fetch Tailscale All Platforms
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '指定版本号 (留空则自动抓取最新版，例如 1.78.1)'
+        required: false
+        default: ''
+
+jobs:
+  download-and-upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 获取最新版本号并批量下载
+        run: |
+          # 1. 自动获取最新版本号 (如果手动输入了则优先用手动输入的)
+          VERSION="${{ github.event.inputs.version }}"
+          if [ -z "$VERSION" ]; then
+            # 从官方 GitHub 仓库抓取最新的 tag
+            VERSION=$(curl -s https://api.github.com/repos/tailscale/tailscale/releases/latest | grep -Po '"tag_name": "v\K[^"]*')
+          fi
+          echo "准备下载的 Tailscale 版本: $VERSION"
+          
+          # 2. 下载 Windows 和 Android (官方有固定的 latest 链接)
+          wget -O tailscale-setup-latest.exe https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe
+          wget -O tailscale-latest.apk https://pkgs.tailscale.com/stable/tailscale-latest.apk
+          
+          # 3. 下载 Linux / OpenWrt 通用静态包 (.tgz)
+          # amd64: 适用于绝大多数 x86_64 软路由 (如 J4125, N100) 和常规云服务器
+          # arm64: 适用于 ARM 架构的设备 (如树莓派 4/5, N1 盒子, 各种 ARM 软路由)
+          wget -O tailscale_${VERSION}_amd64.tgz https://pkgs.tailscale.com/stable/tailscale_${VERSION}_amd64.tgz
+          wget -O tailscale_${VERSION}_arm64.tgz https://pkgs.tailscale.com/stable/tailscale_${VERSION}_arm64.tgz
+          
+          # 4. 针对 Debian/Ubuntu 的离线包 (.deb) (以主流的 amd64 架构为例)
+          # 如果你在常规 Linux 上不想手动配置服务，可以用 deb 包一键安装
+          wget -O tailscale_${VERSION}_amd64_ubuntu.deb https://pkgs.tailscale.com/stable/ubuntu/jammy/tailscale_${VERSION}_amd64.deb
+          wget -O tailscale_${VERSION}_amd64_debian.deb https://pkgs.tailscale.com/stable/debian/bookworm/tailscale_${VERSION}_amd64.deb
+
+      - name: 零压缩打包并上传 (Artifacts)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tailscale-All-Platforms
+          path: |
+            *.exe
+            *.apk
+            *.tgz
+            *.deb
+          compression-level: 0 # 保持0压缩率，大大节省 Action 运行时间
