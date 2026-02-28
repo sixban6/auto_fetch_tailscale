@@ -2,8 +2,8 @@
 
 # 动态生成每日日志文件名
 LOG_FILE="/var/log/watchdog_$(date +%F).log"
-MAX_ATTEMPTS=3
-TIMEOUT=10
+MAX_ATTEMPTS=8
+TIMEOUT=13
 SUCCESS=0
 
 for i in $(seq 1 $MAX_ATTEMPTS); do
