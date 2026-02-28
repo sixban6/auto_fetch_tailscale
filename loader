@@ -1,0 +1,65 @@
+#!/bin/bash
+
+# 1. 定义真实的下载链接 (必须使用 raw.githubusercontent.com)
+RAW_URL="https://raw.githubusercontent.com/sixban6/auto_fetch_tailscale/main/watchdog.sh"
+PROXY_URL="https://gh-proxy.com/${RAW_URL}"
+
+# 脚本保存路径和临时下载路径（先下到临时区，防下载中断导致文件损坏）
+SCRIPT_PATH="/root/watchdog.sh"
+TMP_PATH="/tmp/watchdog_temp.sh"
+
+# 2. 检测网络状态
+if curl -s -I -m 5 https://www.google.com > /dev/null; then
+    GOOGLE_OK=true
+else
+    GOOGLE_OK=false
+fi
+
+# 3. 检测 sing-box 进程是否存在 (OpenWrt 通常可以用 pidof 检测)
+if pidof sing-box >/dev/null || pidof singbox >/dev/null; then
+    SINGBOX_RUNNING=true
+else
+    SINGBOX_RUNNING=false
+fi
+
+# 4. 核心逻辑分支：决定下载方式
+if [ "$SINGBOX_RUNNING" = true ] && [ "$GOOGLE_OK" = false ]; then
+    # 状态：进程在，但没网（假死或节点失效）
+    # 动作：先杀掉僵尸进程防止干扰，然后用代理下载
+    singctl stop
+    DOWNLOAD_URL="$PROXY_URL"
+    
+elif [ "$SINGBOX_RUNNING" = true ] && [ "$GOOGLE_OK" = true ]; then
+    # 状态：进程在，且网全通
+    # 动作：直接走直连通道下载最新版
+    DOWNLOAD_URL="$RAW_URL"
+    
+elif [ "$SINGBOX_RUNNING" = false ] && [ "$GOOGLE_OK" = false ]; then
+    # 状态：进程死透了，且没网
+    # 动作：为了安全起见依然执行一次 stop 清理环境，然后用代理下载
+    singctl stop
+    DOWNLOAD_URL="$PROXY_URL"
+    
+else
+    # 兜底状态：比如进程没运行，但居然能访问 Google（可能老家环境临时切了直连）
+    DOWNLOAD_URL="$RAW_URL"
+fi
+
+# 5. 执行热更新下载 (下载到 /tmp 临时目录)
+# -L 自动跟随重定向，-s 静默模式，-o 指定输出路径
+curl -L -s -m 15 -o "$TMP_PATH" "$DOWNLOAD_URL"
+
+# 6. 安全校验：检查下载的文件是否为空
+if [ -s "$TMP_PATH" ]; then
+    # 下载成功且文件有内容，覆盖旧脚本并赋予执行权限
+    mv -f "$TMP_PATH" "$SCRIPT_PATH"
+    chmod +x "$SCRIPT_PATH"
+    
+    # 7. 移交控制权，执行刚刚下载回来的最新 watchdog 逻辑
+    bash "$SCRIPT_PATH"
+else
+    # 万一 GitHub 和代理全挂了，下载失败，启用本地旧版兜底运行
+    if [ -f "$SCRIPT_PATH" ]; then
+        bash "$SCRIPT_PATH"
+    fi
+fi
