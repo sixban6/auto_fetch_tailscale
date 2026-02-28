@@ -1,10 +1,16 @@
 #!/bin/bash
 
-# 1. 定义真实的下载链接 (必须使用 raw.githubusercontent.com)
+# 1. 定义基础变量
 RAW_URL="https://raw.githubusercontent.com/sixban6/auto_fetch_tailscale/main/watchdog.sh"
-PROXY_URL="https://gh-proxy.com/${RAW_URL}"
 
-# 脚本保存路径和临时下载路径（先下到临时区，防下载中断导致文件损坏）
+# 定义加速镜像池 (数组格式，你可以随时在里面增删可用的镜像源)
+PROXIES=(
+    "https://gh-proxy.com/"
+    "https://ghproxy.net/"
+    "https://github.sixleaves.top/6C1abae6/"
+    "https://ghfast.top/"
+)
+
 SCRIPT_PATH="/root/watchdog.sh"
 TMP_PATH="/tmp/watchdog_temp.sh"
 
@@ -15,50 +21,57 @@ else
     GOOGLE_OK=false
 fi
 
-# 3. 检测 sing-box 进程是否存在 (OpenWrt 通常可以用 pidof 检测)
+# 3. 检测 sing-box 进程
 if pidof sing-box >/dev/null || pidof singbox >/dev/null; then
     SINGBOX_RUNNING=true
 else
     SINGBOX_RUNNING=false
 fi
 
-# 4. 核心逻辑分支：决定下载方式
+# 4. 决策逻辑：判断是否需要强制走代理
 if [ "$SINGBOX_RUNNING" = true ] && [ "$GOOGLE_OK" = false ]; then
-    # 状态：进程在，但没网（假死或节点失效）
-    # 动作：先杀掉僵尸进程防止干扰，然后用代理下载
     singctl stop
-    DOWNLOAD_URL="$PROXY_URL"
-    
-elif [ "$SINGBOX_RUNNING" = true ] && [ "$GOOGLE_OK" = true ]; then
-    # 状态：进程在，且网全通
-    # 动作：直接走直连通道下载最新版
-    DOWNLOAD_URL="$RAW_URL"
-    
+    USE_PROXY=true
 elif [ "$SINGBOX_RUNNING" = false ] && [ "$GOOGLE_OK" = false ]; then
-    # 状态：进程死透了，且没网
-    # 动作：为了安全起见依然执行一次 stop 清理环境，然后用代理下载
     singctl stop
-    DOWNLOAD_URL="$PROXY_URL"
-    
+    USE_PROXY=true
 else
-    # 兜底状态：比如进程没运行，但居然能访问 Google（可能老家环境临时切了直连）
-    DOWNLOAD_URL="$RAW_URL"
+    USE_PROXY=false
 fi
 
-# 5. 执行热更新下载 (下载到 /tmp 临时目录)
-# -L 自动跟随重定向，-s 静默模式，-o 指定输出路径
-curl -L -s -m 15 -o "$TMP_PATH" "$DOWNLOAD_URL"
+# 5. 核心：动态轮询下载逻辑
+DOWNLOAD_SUCCESS=false
 
-# 6. 安全校验：检查下载的文件是否为空
-if [ -s "$TMP_PATH" ]; then
-    # 下载成功且文件有内容，覆盖旧脚本并赋予执行权限
+# 如果网络畅通，优先尝试直连 GitHub 下载
+if [ "$USE_PROXY" = false ]; then
+    if curl -L -s -m 15 -o "$TMP_PATH" "$RAW_URL" && [ -s "$TMP_PATH" ]; then
+        DOWNLOAD_SUCCESS=true
+    fi
+fi
+
+# 如果直连失败，或者被判定必须走代理，则开始遍历镜像池
+if [ "$DOWNLOAD_SUCCESS" = false ]; then
+    for PROXY_PREFIX in "${PROXIES[@]}"; do
+        FULL_URL="${PROXY_PREFIX}${RAW_URL}"
+        
+        # 尝试下载，如果 curl 返回 0 且文件非空 (-s)，则判定成功
+        if curl -L -s -m 15 -o "$TMP_PATH" "$FULL_URL" && [ -s "$TMP_PATH" ]; then
+            DOWNLOAD_SUCCESS=true
+            break # 拿到有效文件，立刻跳出循环，不再尝试后续镜像
+        fi
+    done
+fi
+
+# 6. 安全校验与执行
+if [ "$DOWNLOAD_SUCCESS" = true ]; then
+    # 覆盖旧脚本并赋予执行权限
     mv -f "$TMP_PATH" "$SCRIPT_PATH"
     chmod +x "$SCRIPT_PATH"
     
-    # 7. 移交控制权，执行刚刚下载回来的最新 watchdog 逻辑
+    # 移交控制权，执行热更新后的 watchdog
     bash "$SCRIPT_PATH"
 else
-    # 万一 GitHub 和代理全挂了，下载失败，启用本地旧版兜底运行
+    # 极端情况：直连和所有镜像全军覆没。使用本地老版本兜底运行，尝试自救
     if [ -f "$SCRIPT_PATH" ]; then
         bash "$SCRIPT_PATH"
     fi
