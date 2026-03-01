@@ -85,9 +85,9 @@ check_isp() {
 # ==========================================
 execute_rescue() {
     log "🔧 启动 [第一级救援]: 保留当前配置，仅重启服务..."
-    singctl stop 2>/dev/null
+    singctl sb stop 2>/dev/null
     sleep 3
-    singctl start || singctl stop
+    singctl sb start || singctl sb stop
     
     # 按照要求修改为 90 秒
     log "⏳ 等待 90 秒让节点建立连接..."
@@ -100,7 +100,7 @@ execute_rescue() {
         log "💀 二次复测失败，当前配置或节点可能已失效。"
         log "💣 启动 [第二级救援]: 准备执行紧急配置回滚..."
         
-        singctl stop 2>/dev/null
+        singctl sb stop 2>/dev/null
         
         if [ -f "/etc/sing-box/config.json.bak" ]; then
             cp /etc/sing-box/config.json.bak /etc/sing-box/config.json
@@ -110,7 +110,7 @@ execute_rescue() {
         fi
         
         sleep 3
-        singctl start || singctl stop
+        singctl sb start || singctl sb stop
         log "✅ 紧急回滚执行完毕，等待下一轮巡检。"
     fi
 }
@@ -134,7 +134,7 @@ else
     log "⚠️ 国内网络也不通！正在排查是物理断网，还是透明代理卡死导致全局断网..."
     
     # 核心动作：停掉代理，清除残留的路由劫持规则
-    singctl stop 2>/dev/null
+    singctl sb stop 2>/dev/null
     sleep 3
     
     if check_isp; then
@@ -144,7 +144,7 @@ else
         log "💀 关闭代理后国内依然断网，确认为【物理宽带/主路由 真实故障】！"
         log "⏸️ 为防止误伤配置，挂起本次救援。仅恢复代理运行状态，等待物理网络恢复。"
         # 宽带断了，别乱动配置，把代理重新跑起来等宽带恢复就好
-        singctl start >/dev/null 2>&1
+        singctl sb start >/dev/null 2>&1
         exit 0
     fi
 fi
