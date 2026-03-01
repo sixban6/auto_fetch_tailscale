@@ -1,10 +1,29 @@
 #!/bin/sh
 
 # ==========================================
-# 0. 防止脚本多开锁 (兼容 sh)
+# 0. 防止脚本多开锁 (OpenWrt 原生 PID 锁)
 # ==========================================
-exec 200>"/var/tmp/singbox_watchdog.lock"
-flock -n 200 || exit 1
+LOCK_FILE="/var/run/singbox_watchdog.pid"
+LOG_FILE="/var/log/watchdog.log"
+
+if [ -f "$LOCK_FILE" ]; then
+    # 读取旧的进程号
+    OLD_PID=$(cat "$LOCK_FILE")
+    # 检查该进程号是否还在运行
+    if kill -0 "$OLD_PID" 2>/dev/null; then
+        echo "$(date +'%Y-%m-%d %H:%M:%S') | ⚠️ 上一个 watchdog 任务(PID: $OLD_PID)仍在运行，本次跳过。" >> "$LOG_FILE"
+        exit 1
+    else
+        # 进程已经不在了，说明是上次意外中断留下的死锁，清理掉
+        rm -f "$LOCK_FILE"
+    fi
+fi
+
+# 将当前脚本的进程号写入锁文件
+echo $$ > "$LOCK_FILE"
+
+# 关键：无论脚本是正常结束还是报错崩溃，退出时自动删除锁文件
+trap 'rm -f "$LOCK_FILE"' EXIT INT TERM
 
 # ==========================================
 # 1. 基础配置与日志轮转 (保留3天)
