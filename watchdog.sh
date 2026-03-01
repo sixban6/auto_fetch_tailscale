@@ -33,7 +33,7 @@ else
     singctl stop
     sleep 5
     singctl gen
-    singctl start
+    singctl start || singctl stop
     
     echo "$(date): ⏳ 服务已重启，等待 60 秒让节点建立连接..." >> "$LOG_FILE"
     sleep 60
@@ -57,7 +57,7 @@ else
         fi
         
         sleep 5
-        singctl start
+        singctl start || singctl stop
         
         echo "$(date): ✅ 紧急回滚流程执行完毕，等待下一轮定时任务巡检。" >> "$LOG_FILE"
     fi
