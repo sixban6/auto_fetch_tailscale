@@ -22,11 +22,11 @@ check_network() {
 
 # -------------------- 主程序开始 --------------------
 
-# 步骤一：常规连通性巡检 (尝试 8 次)
-if check_network 8; then
+# 步骤一：常规连通性巡检 (尝试 34 次)
+if check_network 34; then
     echo "$(date): ✅ 常规巡检通过，代理顺畅。" >> "$LOG_FILE"
 else
-    echo "$(date): 🚨 连续 8 次常规测试失败，疑似断网。" >> "$LOG_FILE"
+    echo "$(date): 🚨 连续 34 次常规测试失败，疑似断网。" >> "$LOG_FILE"
     echo "$(date): 🔧 启动 [第一级救援]: 尝试保留当前配置，仅重启服务..." >> "$LOG_FILE"
     
     # 尝试软重启
