@@ -31,7 +31,7 @@ trap 'rm -f "$LOCK_FILE"' EXIT INT TERM
 LOG_FILE="/var/log/watchdog.log"
 TODAY=$(date +'%Y-%m-%d')
 TIMEOUT=10
-# PROXY_PARAM="-x socks5h://127.0.0.1:2080" # 如果本机直连不走代理，请解开并配置正确端口
+PROXY_PARAM="-x socks5h://127.0.0.1:2080" # 如果本机直连不走代理，请解开并配置正确端口
 
 # 写入日志的辅助函数，统一带上时间戳
 log() {
