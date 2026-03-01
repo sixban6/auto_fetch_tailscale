@@ -32,7 +32,6 @@ else
     # 尝试软重启
     singctl stop
     sleep 5
-    singctl gen
     singctl start || singctl stop
     
     echo "$(date): ⏳ 服务已重启，等待 60 秒让节点建立连接..." >> "$LOG_FILE"
