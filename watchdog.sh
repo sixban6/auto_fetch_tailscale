@@ -14,65 +14,65 @@ log() {
 }
 
 # ==========================================
-# 1. 设备架构检测 (拦截器：仅限 x86 执行)
+# 1. 专属回调函数定义
 # ==========================================
-check_device_type() {
+xiaomi_callback() {
+    log "⏩ 执行 小米路由器 专属回调逻辑 (xiaomi_callback)..."
+    # singctl ts stop
+    # singctl update self
+    # singctl ts start
+}
+
+n1_callback() {
+    log "⏩ 执行 N1 盒子 专属回调逻辑 (n1_callback)..."
+    # singctl ts stop
+    # singctl update self
+    # singctl ts start
+}
+
+# ==========================================
+# 2. 设备架构检测与路由拦截
+# ==========================================
+check_device_and_route() {
     local arch=$(uname -m)
     
-    # 如果是 x86 架构，返回 0 (允许放行)
+    # 1. 如果是 x86 架构，直接 return 0，放行执行后续的 watchdog 逻辑
     if [ "$arch" = "x86_64" ]; then
         return 0 
     fi
 
-    # 如果不是 x86，获取具体型号以便在日志中记录
+    # 2. 获取具体型号信息
     local model_info=""
     if [ -f /tmp/sysinfo/model ]; then
         model_info=$(cat /tmp/sysinfo/model)
     elif [ -f /sys/firmware/devicetree/base/model ]; then
         model_info=$(cat /sys/firmware/devicetree/base/model | tr -d '\0') 
     else
-        model_info="无法读取具体型号，架构为 $arch"
+        model_info="unknown_arch_${arch}"
     fi
 
-    # 记录一条跳过日志 (如果嫌日志太烦人，可以把下面这行加上 # 注释掉)
-    log "⏩ 设备检测: 当前设备 [$model_info] 不是 x86 软路由，跳过 watchdog 执行。"
-    
-    return 1 # 返回失败 (阻止执行)
+    # 3. 根据型号关键词区分执行回调
+    case "$model_info" in
+        *Xiaomi*|*Redmi*|*xiaomi*|*redmi*|*AX3000T*)
+            xiaomi_callback
+            ;;
+        *N1*|*Phicomm*|*phicomm*)
+            n1_callback
+            ;;
+        *)
+            log "⏩ 设备检测: 当前设备 [$model_info] 不是目标设备，跳过执行。"
+            ;;
+    esac
+
+    # 只要不是 x86，执行完对应的回调后统统退出脚本，不执行后续常规巡检
+    exit 0
 }
 
-# 核心：执行检查，如果不是 x86 则直接退出脚本
-if ! check_device_type; then
-    cat << 'EOF' > /etc/singctl/singctl.yaml
-    subs:
-      - name: "main"
-        url: ""
-        skip_tls_verify: false
-        remove-emoji: true
-    
-    
-    hy2:
-      up: 21
-      down: 198
-    
-    github:
-      mirror_url: "https://gh-proxy.com"          
-    
-    tailscale:
-      auth_key: "tskey-auth-kCbDSHZJSv11CNTRL-EikGe4i2REhqFiJRkpeiEh8mK9jdLQXn"
-    
-    server:
-      sb_domain: "sub.yourdomain.com"
-      cf_dns_key: "your_cloudflare_api_token"
-    
-EOF
-    singctl ts stop
-    singctl update self
-    singctl ts start
-    exit 0
-fi
+# 核心：执行检查拦截
+check_device_and_route
 
 # ==========================================
-# 2. 防止脚本多开锁 (OpenWrt 原生 PID 锁)
+# 3. 防止脚本多开锁 (仅 x86 会走到这里)
 # ==========================================
 LOCK_FILE="/var/run/singbox_watchdog.pid"
 
@@ -96,7 +96,7 @@ echo $$ > "$LOCK_FILE"
 trap 'rm -f "$LOCK_FILE"' EXIT INT TERM
 
 # ==========================================
-# 3. 日志轮转 (保留3天)
+# 4. 日志轮转 (保留3天)
 # ==========================================
 if [ -f "$LOG_FILE" ]; then
     # 读取日志第一行的时间戳来判断属于哪一天
@@ -114,7 +114,7 @@ fi
 find /var/log/ -name "watchdog_[0-9][0-9][0-9][0-9]-*.log" -type f -mtime +2 -exec rm -f {} \; 2>/dev/null
 
 # ==========================================
-# 4. 网络探测函数
+# 5. 网络探测函数
 # ==========================================
 check_proxy() {
     local max_attempts=$1
@@ -140,7 +140,7 @@ check_isp() {
 }
 
 # ==========================================
-# 5. 核心救援逻辑 (软重启 -> 复测 -> 紧急回滚)
+# 6. 核心救援逻辑 (软重启 -> 复测 -> 紧急回滚)
 # ==========================================
 execute_rescue() {
     log "🔧 启动 [第一级救援]: 保留当前配置，仅重启服务..."
@@ -175,7 +175,7 @@ execute_rescue() {
 }
 
 # ==========================================
-# 6. 主流程开始
+# 7. 主流程开始
 # ==========================================
 # 按照要求修改为 13 次常规代理检测
 if check_proxy 13; then
