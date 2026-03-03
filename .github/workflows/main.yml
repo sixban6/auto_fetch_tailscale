@@ -45,7 +45,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y upx-ucl
 
-      - name: 仅对 ARM 架构进行 UPX 加壳并原样重新打包
+      - name: 仅对 ARM 架构进行 UPX 极限加壳 (LZMA算法)
         run: |
           VERSION="${{ env.TAILSCALE_VERSION }}"
           
@@ -57,9 +57,10 @@ jobs:
           echo "📦 正在解压 ${TGZ_NAME}..."
           tar -xzf ${TGZ_NAME}
           
-          echo "🗜️ 正在对 ${ARCH} 架构内的二进制文件进行 UPX 加壳..."
-          upx -9 ${DIR_NAME}/tailscale
-          upx -9 ${DIR_NAME}/tailscaled
+          echo "🗜️ 正在使用 LZMA 极限算法对 ${ARCH} 架构加壳..."
+          # 使用 --lzma 和 --best 压榨最后一滴空间
+          upx --lzma --best ${DIR_NAME}/tailscale
+          upx --lzma --best ${DIR_NAME}/tailscaled
           
           echo "🔄 正在重新打包回原压缩包名: ${TGZ_NAME}..."
           # 删除原有的未加壳压缩包，然后重新以相同的名字打包
@@ -68,7 +69,7 @@ jobs:
           
           # 清理解压出来的临时文件夹
           rm -rf ${DIR_NAME}
-          echo "✅ ${ARCH} 架构处理完毕！(amd64 架构保持原样)"
+          echo "✅ ${ARCH} 架构极限压缩完毕！(amd64 架构保持原样)"
 
       - name: 清理旧的 Release 页面
         env:
@@ -86,7 +87,7 @@ jobs:
             - **官方稳定版本**: `${{ env.TAILSCALE_VERSION }}`
             
             ### 📦 文件说明：
-            - `*_arm64.tgz`: 适用于 OpenWrt/ARM 设备的包。**内置二进制文件已使用 UPX 极限压缩**，大幅减小 ROM 占用，包名及内部结构与官方完全一致。
+            - `*_arm64.tgz`: 适用于 OpenWrt/ARM 设备的包。**内置二进制文件已使用 UPX (LZMA 极限算法) 压缩**，最大化节省 ROM 空间，包名及内部结构与官方完全一致。
             - `*_amd64.tgz`: 官方原版，未进行 UPX 压缩。
             - `*.deb`: 适用于 Debian/Ubuntu 的官方原版离线安装包。
             
