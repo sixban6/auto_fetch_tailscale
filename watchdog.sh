@@ -74,6 +74,7 @@ server:
   cf_dns_key: "your_cloudflare_api_token"
 EOF
     singctl ts stop
+    singctl sb stop
     singctl update self && singctl ts start
 }
 
