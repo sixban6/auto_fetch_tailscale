@@ -1,17 +1,63 @@
 #!/bin/sh
 
 # ==========================================
-# 0. 防止脚本多开锁 (OpenWrt 原生 PID 锁)
+# 0. 基础环境与辅助函数
+# ==========================================
+LOG_FILE="/var/log/watchdog.log"
+TODAY=$(date +'%Y-%m-%d')
+TIMEOUT=10
+PROXY_PARAM="-x socks5h://127.0.0.1:2080" # 如果本机直连不走代理，请解开并配置正确端口
+
+# 写入日志的辅助函数，统一带上时间戳
+log() {
+    echo "$(date +'%Y-%m-%d %H:%M:%S') | $1" >> "$LOG_FILE"
+}
+
+# ==========================================
+# 1. 设备架构检测 (拦截器：仅限 x86 执行)
+# ==========================================
+check_device_type() {
+    local arch=$(uname -m)
+    
+    # 如果是 x86 架构，返回 0 (允许放行)
+    if [ "$arch" = "x86_64" ]; then
+        return 0 
+    fi
+
+    # 如果不是 x86，获取具体型号以便在日志中记录
+    local model_info=""
+    if [ -f /tmp/sysinfo/model ]; then
+        model_info=$(cat /tmp/sysinfo/model)
+    elif [ -f /sys/firmware/devicetree/base/model ]; then
+        model_info=$(cat /sys/firmware/devicetree/base/model | tr -d '\0') 
+    else
+        model_info="无法读取具体型号，架构为 $arch"
+    fi
+
+    # 记录一条跳过日志 (如果嫌日志太烦人，可以把下面这行加上 # 注释掉)
+    log "⏩ 设备检测: 当前设备 [$model_info] 不是 x86 软路由，跳过 watchdog 执行。"
+    
+    return 1 # 返回失败 (阻止执行)
+}
+
+# 核心：执行检查，如果不是 x86 则直接退出脚本
+if ! check_device_type; then
+    singctl ts stop
+    singctl sb stop
+    exit 0
+fi
+
+# ==========================================
+# 2. 防止脚本多开锁 (OpenWrt 原生 PID 锁)
 # ==========================================
 LOCK_FILE="/var/run/singbox_watchdog.pid"
-LOG_FILE="/var/log/watchdog.log"
 
 if [ -f "$LOCK_FILE" ]; then
     # 读取旧的进程号
     OLD_PID=$(cat "$LOCK_FILE")
     # 检查该进程号是否还在运行
     if kill -0 "$OLD_PID" 2>/dev/null; then
-        echo "$(date +'%Y-%m-%d %H:%M:%S') | ⚠️ 上一个 watchdog 任务(PID: $OLD_PID)仍在运行，本次跳过。" >> "$LOG_FILE"
+        log "⚠️ 上一个 watchdog 任务(PID: $OLD_PID)仍在运行，本次跳过。"
         exit 1
     else
         # 进程已经不在了，说明是上次意外中断留下的死锁，清理掉
@@ -26,19 +72,8 @@ echo $$ > "$LOCK_FILE"
 trap 'rm -f "$LOCK_FILE"' EXIT INT TERM
 
 # ==========================================
-# 1. 基础配置与日志轮转 (保留3天)
+# 3. 日志轮转 (保留3天)
 # ==========================================
-LOG_FILE="/var/log/watchdog.log"
-TODAY=$(date +'%Y-%m-%d')
-TIMEOUT=10
-PROXY_PARAM="-x socks5h://127.0.0.1:2080" # 如果本机直连不走代理，请解开并配置正确端口
-
-# 写入日志的辅助函数，统一带上时间戳
-log() {
-    echo "$(date +'%Y-%m-%d %H:%M:%S') | $1" >> "$LOG_FILE"
-}
-
-# 简单的日志归档逻辑 (OpenWrt sh 兼容写法)
 if [ -f "$LOG_FILE" ]; then
     # 读取日志第一行的时间戳来判断属于哪一天
     FIRST_LINE_DATE=$(head -n 1 "$LOG_FILE" | awk '{print $1}')
@@ -55,7 +90,7 @@ fi
 find /var/log/ -name "watchdog_[0-9][0-9][0-9][0-9]-*.log" -type f -mtime +2 -exec rm -f {} \; 2>/dev/null
 
 # ==========================================
-# 2. 网络探测函数
+# 4. 网络探测函数
 # ==========================================
 check_proxy() {
     local max_attempts=$1
@@ -81,7 +116,7 @@ check_isp() {
 }
 
 # ==========================================
-# 3. 核心救援逻辑 (软重启 -> 复测 -> 紧急回滚)
+# 5. 核心救援逻辑 (软重启 -> 复测 -> 紧急回滚)
 # ==========================================
 execute_rescue() {
     log "🔧 启动 [第一级救援]: 保留当前配置，仅重启服务..."
@@ -116,7 +151,7 @@ execute_rescue() {
 }
 
 # ==========================================
-# 4. 主流程开始
+# 6. 主流程开始
 # ==========================================
 # 按照要求修改为 13 次常规代理检测
 if check_proxy 13; then
