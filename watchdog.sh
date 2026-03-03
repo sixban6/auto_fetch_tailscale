@@ -44,6 +44,7 @@ check_device_type() {
 if ! check_device_type; then
     singctl ts stop
     singctl sb stop
+    restart
     exit 0
 fi
 
