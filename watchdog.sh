@@ -18,16 +18,64 @@ log() {
 # ==========================================
 xiaomi_callback() {
     log "⏩ 执行 小米路由器 专属回调逻辑 (xiaomi_callback)..."
-    # singctl ts stop
-    # singctl update self
-    # singctl ts start
+    
+cat << 'EOF' > /etc/singctl/singctl.yaml
+subs:
+  - name: "main"
+    url: ""
+    skip_tls_verify: false
+    remove-emoji: true
+
+
+hy2:
+  up: 21
+  down: 198
+
+github:
+  mirror_url: "https://gh-proxy.com"          
+
+# (singctl update) 自动填补：Tailscale 自动化配置
+tailscale:
+  auth_key: "tskey-auth-k34pMXAe3h11CNTRL-SApqLjrAQCBuRX7PbzhhCBm2yvuxn4PF"
+
+server:
+  sb_domain: "sub.yourdomain.com"
+  cf_dns_key: "your_cloudflare_api_token"
+EOF
+
+    singctl ts stop
+    singctl update self
+    singctl ts start --router
 }
 
 n1_callback() {
     log "⏩ 执行 N1 盒子 专属回调逻辑 (n1_callback)..."
-    # singctl ts stop
-    # singctl update self
-    # singctl ts start
+
+cat << 'EOF' > /etc/singctl/singctl.yaml
+subs:
+  - name: "main"
+    url: ""
+    skip_tls_verify: false
+    remove-emoji: true
+    
+hy2:
+  up: 21
+  down: 198
+
+github:
+  mirror_url: "https://gh-proxy.com"          
+
+# (singctl update) 自动填补：Tailscale 自动化配置
+tailscale:
+  auth_key: "tskey-auth-k34pMXAe3h11CNTRL-SApqLjrAQCBuRX7PbzhhCBm2yvuxn4PF"
+
+server:
+  sb_domain: "sub.yourdomain.com"
+  cf_dns_key: "your_cloudflare_api_token"
+EOF
+    singctl ts stop
+    singctl update self
+    singctl ts start
 }
 
 # ==========================================
