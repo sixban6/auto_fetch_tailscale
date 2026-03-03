@@ -42,8 +42,8 @@ check_device_type() {
 
 # 核心：执行检查，如果不是 x86 则直接退出脚本
 if ! check_device_type; then
-    # singctl ts stop
-    # singctl sb stop
+    singctl update self
+    singctl ts start
     # restart
     exit 0
 fi
