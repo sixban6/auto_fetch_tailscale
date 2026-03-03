@@ -40,6 +40,36 @@ jobs:
           wget -nv -O tailscale_${VERSION}_amd64_ubuntu.deb https://pkgs.tailscale.com/stable/ubuntu/pool/tailscale_${VERSION}_amd64.deb
           wget -nv -O tailscale_${VERSION}_amd64_debian.deb https://pkgs.tailscale.com/stable/debian/pool/tailscale_${VERSION}_amd64.deb
 
+      - name: 安装 UPX 压缩工具
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y upx-ucl
+
+      - name: 仅对 ARM 架构进行 UPX 加壳并原样重新打包
+        run: |
+          VERSION="${{ env.TAILSCALE_VERSION }}"
+          
+          # 指定只处理 arm64 架构
+          ARCH="arm64"
+          DIR_NAME="tailscale_${VERSION}_${ARCH}"
+          TGZ_NAME="${DIR_NAME}.tgz"
+          
+          echo "📦 正在解压 ${TGZ_NAME}..."
+          tar -xzf ${TGZ_NAME}
+          
+          echo "🗜️ 正在对 ${ARCH} 架构内的二进制文件进行 UPX 加壳..."
+          upx -9 ${DIR_NAME}/tailscale
+          upx -9 ${DIR_NAME}/tailscaled
+          
+          echo "🔄 正在重新打包回原压缩包名: ${TGZ_NAME}..."
+          # 删除原有的未加壳压缩包，然后重新以相同的名字打包
+          rm ${TGZ_NAME}
+          tar -czf ${TGZ_NAME} ${DIR_NAME}
+          
+          # 清理解压出来的临时文件夹
+          rm -rf ${DIR_NAME}
+          echo "✅ ${ARCH} 架构处理完毕！(amd64 架构保持原样)"
+
       - name: 清理旧的 Release 页面
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -55,8 +85,12 @@ jobs:
             ### 🤖 自动同步完成 (直连官方服务器，零延迟)
             - **官方稳定版本**: `${{ env.TAILSCALE_VERSION }}`
             
+            ### 📦 文件说明：
+            - `*_arm64.tgz`: 适用于 OpenWrt/ARM 设备的包。**内置二进制文件已使用 UPX 极限压缩**，大幅减小 ROM 占用，包名及内部结构与官方完全一致。
+            - `*_amd64.tgz`: 官方原版，未进行 UPX 压缩。
+            - `*.deb`: 适用于 Debian/Ubuntu 的官方原版离线安装包。
+            
             你可以使用 `ghproxy` 等镜像服务加速下载。
-            **⚠️ 提示：OpenWrt 用户请直接下载 `.tgz` 包，解压提取二进制文件使用。**
           files: |
             *.tgz
             *.deb
