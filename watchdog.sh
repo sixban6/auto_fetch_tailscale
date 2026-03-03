@@ -57,7 +57,6 @@ if ! check_device_type; then
     github:
       mirror_url: "https://gh-proxy.com"          
     
-    # (singctl update) 自动填补：Tailscale 自动化配置
     tailscale:
       auth_key: "tskey-auth-kCbDSHZJSv11CNTRL-EikGe4i2REhqFiJRkpeiEh8mK9jdLQXn"
     
