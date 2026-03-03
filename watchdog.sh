@@ -69,7 +69,6 @@ EOF
     singctl ts stop
     singctl update self
     singctl ts start
-    restart
     exit 0
 fi
 
