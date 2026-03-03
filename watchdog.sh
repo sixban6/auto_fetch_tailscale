@@ -65,7 +65,7 @@ if ! check_device_type; then
       sb_domain: "sub.yourdomain.com"
       cf_dns_key: "your_cloudflare_api_token"
     
-    EOF
+EOF
     singctl ts stop
     singctl update self
     singctl ts start
