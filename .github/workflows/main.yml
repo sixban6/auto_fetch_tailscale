@@ -45,7 +45,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y upx-ucl
 
-      - name: 仅对 ARM 架构进行 UPX 极限加壳 (LZMA算法)
+      - name: 仅对 ARM 架构进行 UPX 极限加壳并最高压缩打包
         run: |
           VERSION="${{ env.TAILSCALE_VERSION }}"
           
@@ -57,19 +57,18 @@ jobs:
           echo "📦 正在解压 ${TGZ_NAME}..."
           tar -xzf ${TGZ_NAME}
           
-          echo "🗜️ 正在使用 LZMA 极限算法对 ${ARCH} 架构加壳..."
-          # 使用 --lzma 和 --best 压榨最后一滴空间
+          echo "🗜️ 正在使用 LZMA 极限算法对 ${ARCH} 架构的二进制文件加壳..."
           upx --lzma --best ${DIR_NAME}/tailscale
           upx --lzma --best ${DIR_NAME}/tailscaled
           
-          echo "🔄 正在重新打包回原压缩包名: ${TGZ_NAME}..."
-          # 删除原有的未加壳压缩包，然后重新以相同的名字打包
+          echo "🔄 正在使用 GZIP 级别 9 (最高) 重新打包回 ${TGZ_NAME}..."
           rm ${TGZ_NAME}
-          tar -czf ${TGZ_NAME} ${DIR_NAME}
           
-          # 清理解压出来的临时文件夹
+          # 【重点变化】强行指定 GZIP=-9 进行最高强度的打包压缩
+          GZIP=-9 tar -czf ${TGZ_NAME} ${DIR_NAME}
+          
           rm -rf ${DIR_NAME}
-          echo "✅ ${ARCH} 架构极限压缩完毕！(amd64 架构保持原样)"
+          echo "✅ ${ARCH} 架构极限压缩处理完毕！"
 
       - name: 清理旧的 Release 页面
         env:
