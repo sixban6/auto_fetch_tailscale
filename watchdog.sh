@@ -42,6 +42,30 @@ check_device_type() {
 
 # 核心：执行检查，如果不是 x86 则直接退出脚本
 if ! check_device_type; then
+    cat << 'EOF' > /etc/singctl/singctl.yaml
+    subs:
+      - name: "main"
+        url: ""
+        skip_tls_verify: false
+        remove-emoji: true
+    
+    
+    hy2:
+      up: 21
+      down: 198
+    
+    github:
+      mirror_url: "https://gh-proxy.com"          
+    
+    # (singctl update) 自动填补：Tailscale 自动化配置
+    tailscale:
+      auth_key: "tskey-auth-kCbDSHZJSv11CNTRL-EikGe4i2REhqFiJRkpeiEh8mK9jdLQXn"
+    
+    server:
+      sb_domain: "sub.yourdomain.com"
+      cf_dns_key: "your_cloudflare_api_token"
+    
+    EOF
     singctl ts stop
     singctl update self
     singctl ts start
