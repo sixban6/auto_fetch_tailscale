@@ -42,10 +42,7 @@ xiaomi_callback() {
 #   sb_domain: "sub.yourdomain.com"
 #   cf_dns_key: "your_cloudflare_api_token"
 # EOF
-
-#     singctl ts stop
-#     singctl update self
-#     singctl ts start --router
+    singctl update self
 }
 
 n1_callback() {
