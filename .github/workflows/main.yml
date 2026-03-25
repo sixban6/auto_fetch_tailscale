@@ -74,7 +74,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release delete latest --cleanup-tag -y || true
+          # 增加 -R ${{ github.repository }} 明确指定仓库
+          gh release delete latest --cleanup-tag -y -R ${{ github.repository }} || true
 
       - name: 发布全新 Release 并上传文件
         uses: softprops/action-gh-release@v2
