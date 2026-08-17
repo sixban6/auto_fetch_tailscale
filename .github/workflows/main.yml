@@ -70,6 +70,10 @@ jobs:
           rm -rf ${DIR_NAME}
           echo "✅ ${ARCH} 架构极限压缩处理完毕！"
 
+          # Generate checksums for all packages
+          sha256sum *.tar.gz > checksums.txt
+          echo "Generated checksums"
+
       - name: 清理旧的 Release 页面
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -93,5 +97,6 @@ jobs:
             
             你可以使用 `ghproxy` 等镜像服务加速下载。
           files: |
+            checksums.txt
             *.tgz
             *.deb
