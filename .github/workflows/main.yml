@@ -71,7 +71,8 @@ jobs:
           echo "✅ ${ARCH} 架构极限压缩处理完毕！"
 
           # Generate checksums for all packages
-          sha256sum *.tar.gz > checksums.txt
+          sha256sum *.tgz > checksums.txt
+          sha256sum *.deb >> checksums.txt
           echo "Generated checksums"
 
       - name: 清理旧的 Release 页面
