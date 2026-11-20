@@ -18,68 +18,72 @@ jobs:
       contents: write
 
     steps:
-      - name: 获取官方绝对最新版本号并下载
+      - name: 获取官方绝对最新版本号、下载 amd64 并拉取对应版本源码
         run: |
+          set -euo pipefail
           VERSION="${{ github.event.inputs.version }}"
           if [ -z "$VERSION" ]; then
-            # 放弃 GitHub API，直接从 Tailscale 官方包服务器读取最新稳定版 JSON
-            VERSION=$(curl -s "https://pkgs.tailscale.com/stable/?mode=json" | jq -r .Version)
+            VERSION=$(curl -fsSL "https://pkgs.tailscale.com/stable/?mode=json" | jq -r .Version)
           fi
-          
-          # 防呆处理：如果手动输入了带 v 的版本号 (如 v1.78.1)，自动剔除 v
+
+          # 防呆处理：如果手动输入了带 v 的版本号 (如 v1.104.7)，自动剔除 v
           VERSION="${VERSION#v}"
-          
+
           echo "TAILSCALE_VERSION=$VERSION" >> $GITHUB_ENV
           echo "🎯 成功获取官方最新版本: $VERSION"
-          
-          # Linux / OpenWrt 必备通用静态包 (tgz)
+
+          # amd64 保持官方原版资产（含 .tgz 与 .deb）
           wget -nv -O tailscale_${VERSION}_amd64.tgz https://pkgs.tailscale.com/stable/tailscale_${VERSION}_amd64.tgz
-          wget -nv -O tailscale_${VERSION}_arm64.tgz https://pkgs.tailscale.com/stable/tailscale_${VERSION}_arm64.tgz
-          
-          # Debian / Ubuntu 离线包 (官方 pool 隐藏路径)
           wget -nv -O tailscale_${VERSION}_amd64_ubuntu.deb https://pkgs.tailscale.com/stable/ubuntu/pool/tailscale_${VERSION}_amd64.deb
           wget -nv -O tailscale_${VERSION}_amd64_debian.deb https://pkgs.tailscale.com/stable/debian/pool/tailscale_${VERSION}_amd64.deb
 
-      - name: 安装 UPX 压缩工具
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y upx-ucl
+          # 拉取同版本号官方源码用于编译 ARM64 路由器精简合体版
+          git clone --depth 1 --branch "v${VERSION}" https://github.com/tailscale/tailscale.git tailscale-src
 
-      - name: 仅对 ARM 架构进行 UPX 极限加壳并最高压缩打包
+      - name: Setup Go (匹配 Tailscale 源码 go.mod 版本)
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: tailscale-src/go.mod
+
+      - name: 编译 ARM64 精简合体无加壳版 (ts_include_cli + 路由最小特性集)
         run: |
+          set -euo pipefail
           VERSION="${{ env.TAILSCALE_VERSION }}"
-          
-          # 指定只处理 arm64 架构
           ARCH="arm64"
           DIR_NAME="tailscale_${VERSION}_${ARCH}"
           TGZ_NAME="${DIR_NAME}.tgz"
-          
-          echo "📦 正在解压 ${TGZ_NAME}..."
-          tar -xzf ${TGZ_NAME}
-          
-          echo "🗜️ 正在使用 LZMA 极限算法对 ${ARCH} 架构的二进制文件加壳..."
-          upx --lzma --best ${DIR_NAME}/tailscale
-          upx --lzma --best ${DIR_NAME}/tailscaled
-          
-          echo "🔄 正在使用 GZIP 级别 9 (最高) 重新打包回 ${TGZ_NAME}..."
-          rm ${TGZ_NAME}
-          
-          # 【重点变化】强行指定 GZIP=-9 进行最高强度的打包压缩
-          GZIP=-9 tar -czf ${TGZ_NAME} ${DIR_NAME}
-          
-          rm -rf ${DIR_NAME}
-          echo "✅ ${ARCH} 架构极限压缩处理完毕！"
 
-          # Generate checksums for all packages
+          cd tailscale-src
+          eval $(CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go run ./cmd/mkversion)
+          TAGS=$(CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go run ./cmd/featuretags --min --add=cli,osrouter,iptables,advertiseroutes,advertiseexitnode,useroutes,useexitnode,nattraversal,portmapper,listenrawdisco,ipnbus,debug,bakedroots,cachenetmap,dns,health,routecheck,useproxy,unixsocketidentity)
+          echo "Build version: ${VERSION_LONG}"
+          echo "Build tags: ${TAGS}"
+
+          mkdir -p "../${DIR_NAME}"
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build \
+            -tags="${TAGS}" \
+            -trimpath \
+            -ldflags="-s -w -X tailscale.com/version.longStamp=${VERSION_LONG} -X tailscale.com/version.shortStamp=${VERSION_SHORT}" \
+            -o "../${DIR_NAME}/tailscaled" \
+            ./cmd/tailscaled
+          cd ..
+
+          # 合体单二进制：通过软链接以 tailscale CLI 入口复用同一个可执行文件，节省 ~50% Flash 与运行时内存
+          ln -s tailscaled "${DIR_NAME}/tailscale"
+          ls -lh "${DIR_NAME}/"
+          file "${DIR_NAME}/tailscaled"
+
+          GZIP=-9 tar -czf "${TGZ_NAME}" "${DIR_NAME}"
+          rm -rf "${DIR_NAME}" tailscale-src
+
           sha256sum *.tgz > checksums.txt
           sha256sum *.deb >> checksums.txt
-          echo "Generated checksums"
+          cat checksums.txt
 
       - name: 清理旧的 Release 页面
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 增加 -R ${{ github.repository }} 明确指定仓库
           gh release delete latest --cleanup-tag -y -R ${{ github.repository }} || true
 
       - name: 发布全新 Release 并上传文件
@@ -88,15 +92,13 @@ jobs:
           tag_name: latest
           name: "Tailscale 最新全平台离线包"
           body: |
-            ### 🤖 自动同步完成 (直连官方服务器，零延迟)
+            ### 🤖 自动同步与精简构建完成
             - **官方稳定版本**: `${{ env.TAILSCALE_VERSION }}`
-            
+
             ### 📦 文件说明：
-            - `*_arm64.tgz`: 适用于 OpenWrt/ARM 设备的包。**内置二进制文件已使用 UPX (LZMA 极限算法) 压缩**，最大化节省 ROM 空间，包名及内部结构与官方完全一致。
-            - `*_amd64.tgz`: 官方原版，未进行 UPX 压缩。
+            - `*_arm64.tgz`: **OpenWrt/ARM64 路由器专用精简合体版（未 UPX 加壳）** —— 基于官方同版本源码通过 `featuretags --min` 裁剪桌面/Taildrop/SSH/Funnel 等桌面冗余组件并合并 `cli + daemon`（`tailscale -> tailscaled` 软链接），兼顾小 Flash 存储与低匿名内存驻留，适配 256MB 小内存路由器。
+            - `*_amd64.tgz`: 官方原版，未修改。
             - `*.deb`: 适用于 Debian/Ubuntu 的官方原版离线安装包。
-            
-            你可以使用 `ghproxy` 等镜像服务加速下载。
           files: |
             checksums.txt
             *.tgz
